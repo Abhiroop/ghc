@@ -94,6 +94,11 @@ sse4_2Enabled = do
   dflags <- getDynFlags
   return (isSse4_2Enabled dflags)
 
+avxEnabled :: NatM Bool
+avxEnabled = do
+  dflags <- getDynFlags
+  return (isAvxEnabled dflags)
+
 if_sse2 :: NatM a -> NatM a -> NatM a
 if_sse2 sse2 x87 = do
   b <- sse2Enabled
@@ -617,8 +622,11 @@ getRegister' _ is32Bit (CmmMachOp (MO_Add W64) [CmmReg (CmmGlobal PicBaseReg),
       return $ Any II64 (\dst -> unitOL $
         LEA II64 (OpAddr (ripRel (litToImm displacement))) (OpReg dst))
 
+getRegister' _ is32Bit (CmmMachOp (MO_VF_Add 8 W32) []) = undefined
+
 getRegister' dflags is32Bit (CmmMachOp mop [x]) = do -- unary MachOps
     sse2 <- sse2Enabled
+    avx  <- avxEnabled 
     case mop of
       MO_F_Neg w
          | sse2      -> sse2NegCode w x
