@@ -622,11 +622,9 @@ getRegister' _ is32Bit (CmmMachOp (MO_Add W64) [CmmReg (CmmGlobal PicBaseReg),
       return $ Any II64 (\dst -> unitOL $
         LEA II64 (OpAddr (ripRel (litToImm displacement))) (OpReg dst))
 
-getRegister' _ is32Bit (CmmMachOp (MO_VF_Add 8 W32) []) = undefined
 
 getRegister' dflags is32Bit (CmmMachOp mop [x]) = do -- unary MachOps
     sse2 <- sse2Enabled
-    avx  <- avxEnabled 
     case mop of
       MO_F_Neg w
          | sse2      -> sse2NegCode w x
@@ -739,6 +737,7 @@ getRegister' dflags is32Bit (CmmMachOp mop [x]) = do -- unary MachOps
 
 getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
   sse2 <- sse2Enabled
+  avx  <- avxEnabled
   case mop of
       MO_F_Eq _ -> condFltReg is32Bit EQQ x y
       MO_F_Ne _ -> condFltReg is32Bit NE  x y
@@ -784,6 +783,11 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_Or  rep -> triv_op rep OR
       MO_Xor rep -> triv_op rep XOR
 
+      -- Experimental Vector Operations
+      MO_VF_Add l w  | avx       -> vector_add l w x y
+                     | otherwise -> needLlvm
+      -----------------
+
         {- Shift ops on x86s have constraints on their source, it
            either has to be Imm, CL or 1
             => trivialCode is not restrictive enough (sigh.)
@@ -802,7 +806,7 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_VS_Neg {}     -> needLlvm
       MO_VF_Insert {}  -> needLlvm
       MO_VF_Extract {} -> needLlvm
-      MO_VF_Add {}     -> needLlvm
+      -----experiments here------
       MO_VF_Sub {}     -> needLlvm
       MO_VF_Mul {}     -> needLlvm
       MO_VF_Quot {}    -> needLlvm
@@ -886,6 +890,21 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       where format = intFormat rep
     -- TODO: There are other interesting patterns we want to replace
     --     with a LEA, e.g. `(x + offset) + (y << shift)`.
+
+    -------------------
+    -- Experimental---
+    vector_add :: Length -> Width -> CmmExpr -> CmmExpr -> NatM Register
+    vector_add l w (CmmReg (CmmGlobal (YmmReg m))) (CmmReg (CmmGlobal (YmmReg n))) =
+      undefined
+
+-- MO_VF_Add  l w -> genCastBinMach (LMVector l (widthToLlvmFloat w)) LM_MO_FAdd
+-- genCastBinMach ty op = binCastLlvmOp ty (LlvmOp op)
+-- [x,y] :: [CmmExpr] most probably x and y are the 2 operands
+-- binCastLlvmOp ty binOp = runExprData $ do
+--             vx <- exprToVarW x
+--             vy <- exprToVarW y
+--             [vx', vy'] <- castVarsW Signed [(vx, ty), (vy, ty)]
+--             doExprW ty $ binOp vx' vy'
 
     --------------------
     sub_code :: Width -> CmmExpr -> CmmExpr -> NatM Register
