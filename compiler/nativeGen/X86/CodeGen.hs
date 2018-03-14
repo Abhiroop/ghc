@@ -784,7 +784,7 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_Xor rep -> triv_op rep XOR
 
       -- Experimental Vector Operations
-      MO_VF_Add l w  | avx       -> vector_add l w x y
+      MO_VF_Add l w  | avx       -> vector_float_add l w x y
                      | otherwise -> needLlvm
       -----------------
 
@@ -893,9 +893,30 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
 
     -------------------
     -- Experimental---
-    vector_add :: Length -> Width -> CmmExpr -> CmmExpr -> NatM Register
-    vector_add l w (CmmReg (CmmGlobal (YmmReg m))) (CmmReg (CmmGlobal (YmmReg n))) =
-      undefined
+    vector_float_add :: Length -> Width -> CmmExpr -> CmmExpr -> NatM Register
+    vector_float_add 8 W32 x@(CmmReg (CmmGlobal (YmmReg _))) y@(CmmReg (CmmGlobal (YmmReg _))) =
+      let fmt = VecFormat 8 FmtFloat W32
+       in trivialCode W32 (VADDPS fmt) (Just (VADDPS fmt)) x y
+
+    -- add_int width x y = do
+    --     (x_reg, x_code) <- getSomeReg x
+    --     let
+    --         format = intFormat width
+    --         imm = ImmInt (fromInteger y)
+    --         code dst
+    --            = x_code `snocOL`
+    --              LEA format
+    --                     (OpAddr (AddrBaseIndex (EABaseReg x_reg) EAIndexNone imm))
+    --                     (OpReg dst)
+    --     --
+    --     return (Any format code)
+
+    vector_float_add _ _ _ _ = undefined
+
+
+-- data Register
+--         = Fixed Format Reg InstrBlock
+--         | Any   Format (Reg -> InstrBlock)
 
 -- MO_VF_Add  l w -> genCastBinMach (LMVector l (widthToLlvmFloat w)) LM_MO_FAdd
 -- genCastBinMach ty op = binCastLlvmOp ty (LlvmOp op)

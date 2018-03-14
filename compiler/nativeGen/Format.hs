@@ -11,7 +11,7 @@
 module Format (
     Format(..),
     VecFormat(..),
-    ScalarFormat,
+    ScalarFormat(..),
     intFormat,
     floatFormat,
     isFloatFormat,
