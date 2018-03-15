@@ -3060,7 +3060,9 @@ genVectorTrivialCode rep instr a b = do
   a_code <- getAnyReg a
   let
      -- Currently ignoring the case of (dst := dst `op` src). Assuming that
-     --  a temporary register is not needed.
+     --  a temporary register is not needed. As the register size of an
+     -- AVX2 instruction is 256 bits, the logic for a temporary register
+     -- might be different
      code dst =
                 b_code `appOL`
                 a_code dst `snocOL`
