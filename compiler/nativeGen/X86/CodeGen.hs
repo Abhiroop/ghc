@@ -496,9 +496,10 @@ getRegister' dflags is32Bit (CmmReg reg)
                return (Fixed (archWordFormat is32Bit) reg' nilOL)
         _ ->
             do use_sse2 <- sse2Enabled
+               use_avx <- avxEnabled
                let
                  fmt = cmmTypeFormat (cmmRegType dflags reg)
-                 format | not use_sse2 && isFloatFormat fmt = FF80
+                 format | not use_avx && not use_sse2 && isFloatFormat fmt = FF80
                         | otherwise                         = fmt
                --
                let platform = targetPlatform dflags
@@ -894,38 +895,17 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
     -------------------
     -- Experimental---
     vector_float_add :: Length -> Width -> CmmExpr -> CmmExpr -> NatM Register
-    vector_float_add 8 W32 x@(CmmReg (CmmGlobal (YmmReg _))) y@(CmmReg (CmmGlobal (YmmReg _))) =
+    vector_float_add 8 W32 x y =
       let fmt = VecFormat 8 FmtFloat W32
        in trivialCode W32 (VADDPS fmt) (Just (VADDPS fmt)) x y
-
-    -- add_int width x y = do
-    --     (x_reg, x_code) <- getSomeReg x
-    --     let
-    --         format = intFormat width
-    --         imm = ImmInt (fromInteger y)
-    --         code dst
-    --            = x_code `snocOL`
-    --              LEA format
-    --                     (OpAddr (AddrBaseIndex (EABaseReg x_reg) EAIndexNone imm))
-    --                     (OpReg dst)
-    --     --
-    --     return (Any format code)
+-- have to call genTrivialCode
+-- have to pass VectorFormat
+-- genTrivialCode uses Format for what??
+-- getAnyRegNat VecFormat
+-- MOV VecFormat ......
+-- Any VecFormat ......
 
     vector_float_add _ _ _ _ = undefined
-
-
--- data Register
---         = Fixed Format Reg InstrBlock
---         | Any   Format (Reg -> InstrBlock)
-
--- MO_VF_Add  l w -> genCastBinMach (LMVector l (widthToLlvmFloat w)) LM_MO_FAdd
--- genCastBinMach ty op = binCastLlvmOp ty (LlvmOp op)
--- [x,y] :: [CmmExpr] most probably x and y are the 2 operands
--- binCastLlvmOp ty binOp = runExprData $ do
---             vx <- exprToVarW x
---             vy <- exprToVarW y
---             [vx', vy'] <- castVarsW Signed [(vx, ty), (vy, ty)]
---             doExprW ty $ binOp vx' vy'
 
     --------------------
     sub_code :: Width -> CmmExpr -> CmmExpr -> NatM Register
@@ -3074,6 +3054,21 @@ trivialCode' is32Bit width _ (Just revinstr) (CmmLit lit_a) b
 
 trivialCode' _ width instr _ a b
   = genTrivialCode (intFormat width) instr a b
+
+-- An experimental Vector trivial code genrator. This does not handle the case of the clobbered register. More comments below.
+genVectorTrivialCode :: Format -> (Operand -> Operand -> Instr)
+               -> CmmExpr -> CmmExpr -> NatM Register
+genVectorTrivialCode rep instr a b = do
+  (b_op, b_code) <- getNonClobberedOperand b
+  a_code <- getAnyReg a
+  let
+     -- Currently ignoring the case of (dst := dst `op` src). Assuming that
+     --  a temporary register is not needed.
+     code dst =
+                b_code `appOL`
+                a_code dst `snocOL`
+                instr b_op (OpReg dst)
+  return (Any rep code)
 
 -- This is re-used for floating pt instructions too.
 genTrivialCode :: Format -> (Operand -> Operand -> Instr)
