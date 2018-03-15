@@ -626,7 +626,6 @@ getRegister' _ is32Bit (CmmMachOp (MO_Add W64) [CmmReg (CmmGlobal PicBaseReg),
       return $ Any II64 (\dst -> unitOL $
         LEA II64 (OpAddr (ripRel (litToImm displacement))) (OpReg dst))
 
-
 getRegister' dflags is32Bit (CmmMachOp mop [x]) = do -- unary MachOps
     sse2 <- sse2Enabled
     case mop of
@@ -791,7 +790,6 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_VF_Add l w  | avx       -> vector_float_add l w x y
                      | otherwise -> needLlvm
       -----------------
-
         {- Shift ops on x86s have constraints on their source, it
            either has to be Imm, CL or 1
             => trivialCode is not restrictive enough (sigh.)
@@ -810,7 +808,7 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_VS_Neg {}     -> needLlvm
       MO_VF_Insert {}  -> needLlvm
       MO_VF_Extract {} -> needLlvm
-      -----experiments here------
+
       MO_VF_Sub {}     -> needLlvm
       MO_VF_Mul {}     -> needLlvm
       MO_VF_Quot {}    -> needLlvm
@@ -902,7 +900,7 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       let fmt = VecFormat 8 FmtFloat W32
        in genVectorTrivialCode fmt (VADDPS fmt) x y
     vector_float_add _ _ _ _ = undefined
-
+    -- Add Other vector sizes and cases.
     --------------------
     sub_code :: Width -> CmmExpr -> CmmExpr -> NatM Register
     sub_code rep x (CmmLit (CmmInt y _))

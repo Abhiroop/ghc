@@ -227,7 +227,6 @@ data Instr
         | ADD_CC      Format Operand Operand
         | SUB_CC      Format Operand Operand
 
-
         -- Simple bit-twiddling.
         | AND         Format Operand Operand
         | OR          Format Operand Operand
