@@ -272,7 +272,10 @@ data ChildCode64
 data Register
         = Fixed Format Reg InstrBlock
         | Any   Format (Reg -> InstrBlock)
-
+        | AnyV  VecFormat (Reg -> InstrBlock)
+        -- The AnyV is experimental, the `anyReg` function (which `getAnyReg` calls)
+        -- removes the removes the data constructor and just returns the
+        -- (Reg -> InstrBlock) part
 
 swizzleRegisterRep :: Register -> Format -> Register
 swizzleRegisterRep (Fixed _ reg code) format = Fixed format reg code
@@ -897,14 +900,7 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
     vector_float_add :: Length -> Width -> CmmExpr -> CmmExpr -> NatM Register
     vector_float_add 8 W32 x y =
       let fmt = VecFormat 8 FmtFloat W32
-       in trivialCode W32 (VADDPS fmt) (Just (VADDPS fmt)) x y
--- have to call genTrivialCode
--- have to pass VectorFormat
--- genTrivialCode uses Format for what??
--- getAnyRegNat VecFormat
--- MOV VecFormat ......
--- Any VecFormat ......
-
+       in genVectorTrivialCode fmt (VADDPS fmt) x y
     vector_float_add _ _ _ _ = undefined
 
     --------------------
@@ -1039,6 +1035,7 @@ getAnyReg expr = do
   anyReg r
 
 anyReg :: Register -> NatM (Reg -> InstrBlock)
+anyReg (AnyV _ code)         = return code
 anyReg (Any _ code)          = return code
 anyReg (Fixed rep reg fcode) = return (\dst -> fcode `snocOL` reg2reg rep reg dst)
 
@@ -3056,7 +3053,7 @@ trivialCode' _ width instr _ a b
   = genTrivialCode (intFormat width) instr a b
 
 -- An experimental Vector trivial code genrator. This does not handle the case of the clobbered register. More comments below.
-genVectorTrivialCode :: Format -> (Operand -> Operand -> Instr)
+genVectorTrivialCode :: VecFormat -> (Operand -> Operand -> Instr)
                -> CmmExpr -> CmmExpr -> NatM Register
 genVectorTrivialCode rep instr a b = do
   (b_op, b_code) <- getNonClobberedOperand b
@@ -3068,7 +3065,7 @@ genVectorTrivialCode rep instr a b = do
                 b_code `appOL`
                 a_code dst `snocOL`
                 instr b_op (OpReg dst)
-  return (Any rep code)
+  return (AnyV rep code)
 
 -- This is re-used for floating pt instructions too.
 genTrivialCode :: Format -> (Operand -> Operand -> Instr)
